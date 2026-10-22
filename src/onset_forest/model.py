@@ -34,6 +34,7 @@ def _regressor(params: ForestParams) -> CRPSRandomForestRegressor:
         min_samples_leaf=params.min_samples_leaf,
         max_features=params.max_features,
         max_samples=params.max_samples,
+        max_depth=params.max_depth,
         random_state=params.random_state,
         n_jobs=params.n_jobs,
     )

@@ -12,6 +12,7 @@ class ForestParams:
     min_samples_leaf: int = 20
     max_features: str | None = "sqrt"
     max_samples: float = 1.0
+    max_depth: int | None = None
     random_state: int = 123
     n_jobs: int = -1
     max_day: int = 28
@@ -25,6 +26,8 @@ class ForestParams:
             raise ValueError(f"min_samples_leaf must be at least 1, got {self.min_samples_leaf}.")
         if self.max_features not in MAX_FEATURES_CHOICES:
             raise ValueError(f'max_features must be "sqrt" or None, got {self.max_features!r}.')
+        if self.max_depth is not None and self.max_depth < 1:
+            raise ValueError(f"max_depth must be at least 1 or None, got {self.max_depth}.")
         if not 0.0 < self.max_samples <= 1.0:
             raise ValueError(f"max_samples must be in (0, 1], got {self.max_samples}.")
         if self.days_per_week < 1 or self.max_day % self.days_per_week != 0:
