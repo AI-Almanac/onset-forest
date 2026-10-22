@@ -118,9 +118,10 @@ def _scan_feature(x_sorted, y_sorted, yi_sorted, m, n, parent_T, total_sum, min_
 
 
 @_jit()
-def _best_split_kernel(X, y, yi, feature_ids, parent_T, total_sum, m, min_leaf):
-    """Best split over the candidate features. Returns (feature, threshold, score, found)."""
-    n = X.shape[0]
+def _best_split_kernel(X, rows, y, yi, feature_ids, parent_T, total_sum, m, min_leaf):
+    """Best split of X's `rows` over the candidate features; y and yi are those rows'
+    targets. Returns (feature, threshold, score, found)."""
+    n = rows.shape[0]
     best_score = np.inf
     best_feature = -1
     best_threshold = np.nan
@@ -128,7 +129,7 @@ def _best_split_kernel(X, y, yi, feature_ids, parent_T, total_sum, m, min_leaf):
 
     for f in range(feature_ids.shape[0]):
         feature = feature_ids[f]
-        col = X[:, feature]
+        col = X[rows, feature]
         order = np.argsort(col, kind="mergesort")
         x_sorted = col[order]
         if x_sorted[0] == x_sorted[-1]:
@@ -199,19 +200,29 @@ class _CRPSTree:
     def fit(self, X, y):
         X = np.asarray(X, dtype=np.float64)
         y = np.asarray(y, dtype=np.float64).ravel()
+        return self.fit_rows(X, y, np.arange(X.shape[0], dtype=np.int64))
+
+    def fit_rows(self, X, y, rows):
+        """Grow the tree on X[rows] and y[rows], in that order, without copying X.
+
+        Nodes hold row indices into X and the split kernel reads each candidate
+        column through them, so a node keeps O(rows) memory rather than a copy
+        of its rows of X. The tree is the one fit(X[rows], y[rows]) grows."""
         self.n_features_in_ = X.shape[1]
-        self.root_ = self._grow(X, y, 0)
+        self.root_ = self._grow(X, y, np.asarray(rows, dtype=np.int64), 0)
         return self
 
-    def _grow(self, X, y, depth):
-        n, p = X.shape
+    def _grow(self, X, y_all, rows, depth):
+        n = rows.shape[0]
+        p = X.shape[1]
+        y = y_all[rows]
         ml = self.min_samples_leaf
         if n < 2 * ml:
-            return _Node(values=y.copy())
+            return _Node(values=y)
         if self.max_depth is not None and depth >= self.max_depth:
-            return _Node(values=y.copy())
+            return _Node(values=y)
         if np.all(y == y[0]):
-            return _Node(values=y.copy())
+            return _Node(values=y)
 
         y_sorted = np.sort(y)
         parent_T = _pairwise_abs_sum(y_sorted)
@@ -222,21 +233,21 @@ class _CRPSTree:
         feature_ids = self._candidate_features(p)
 
         feat, thr, score, found = _best_split_kernel(
-            X, y, yi, feature_ids, parent_T, total_sum, m, ml
+            X, rows, y, yi, feature_ids, parent_T, total_sum, m, ml
         )
 
         if not found:
-            return _Node(values=y.copy())
+            return _Node(values=y)
         if score >= parent_score - 1e-12:
-            return _Node(values=y.copy())
+            return _Node(values=y)
 
-        left_mask = X[:, feat] <= thr
+        left_mask = X[rows, feat] <= thr
         nl = left_mask.sum()
         if nl < ml or (n - nl) < ml:
-            return _Node(values=y.copy())
+            return _Node(values=y)
 
-        left = self._grow(X[left_mask], y[left_mask], depth + 1)
-        right = self._grow(X[~left_mask], y[~left_mask], depth + 1)
+        left = self._grow(X, y_all, rows[left_mask], depth + 1)
+        right = self._grow(X, y_all, rows[~left_mask], depth + 1)
         return _Node(feature=int(feat), threshold=float(thr), left=left, right=right)
 
     def _candidate_features(self, p):
@@ -259,7 +270,7 @@ def _fit_one_tree(X, y, idx, min_samples_leaf, max_depth, max_features, seed):
         max_depth=max_depth,
         max_features=max_features,
     )
-    tree.fit(X[idx], y[idx])
+    tree.fit_rows(X, y, idx)
     return tree
 
 
