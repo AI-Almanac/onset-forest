@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
+from conftest import MODELS
 
+from onset_forest import ForestParams, fit
 from onset_forest.forest import _CRPSTree
 
 
@@ -34,3 +38,18 @@ def test_a_tree_grown_from_row_indices_is_the_tree_grown_from_those_rows(
     from_copy = grow().fit(X[rows], y[rows])
 
     _same_tree(from_rows.root_, from_copy.root_)
+
+
+def _depth(node) -> int:
+    return 0 if node.is_leaf else 1 + max(_depth(node.left), _depth(node.right))
+
+
+def test_max_depth_bounds_every_tree_the_model_grows(frame, params) -> None:
+    fitted = fit(frame, MODELS, replace(params, max_depth=3))
+
+    assert max(_depth(tree.root_) for tree in fitted.forest.trees_) <= 3
+
+
+def test_a_depth_below_one_is_rejected() -> None:
+    with pytest.raises(ValueError, match="max_depth"):
+        ForestParams(max_depth=0)
